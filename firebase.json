@@ -1,0 +1,26 @@
+{
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "homesync-a1d20",
+          "appId": "1:820337923914:android:2da27ee1a5ac937c56d3b3",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "homesync-a1d20",
+          "configurations": {
+            "android": "1:820337923914:android:2da27ee1a5ac937c56d3b3",
+            "ios": "1:820337923914:ios:a4ff4134172e24ea56d3b3"
+          }
+        }
+      }
+    }
+  }
+}

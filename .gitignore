@@ -1,0 +1,57 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/coverage/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# 서명/비밀 (절대 커밋 금지)
+.env
+.env.*
+key.properties
+*.keystore
+*.jks
+
+# (선택) repo를 '공개(public)'로 바꿀 경우 아래 주석을 해제해 Firebase 설정을 제외하세요.
+# 비공개(private) repo라면 빌드 편의를 위해 그대로 커밋해도 됩니다.
+# android/app/google-services.json
+# lib/firebase_options.dart
