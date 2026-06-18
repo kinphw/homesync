@@ -29,6 +29,15 @@
       "problemMatcher": []
     },
     {
+      "label": "▶ 폰에 설치 (USB 연결 후, 빌드+설치 한 방)",
+      "detail": "연결된 안드로이드 폰을 자동 감지해 release APK 빌드+설치+실행 (안드로이드 스튜디오 불필요)",
+      "type": "process",
+      "command": "powershell",
+      "args": ["-ExecutionPolicy", "Bypass", "-NoProfile", "-File", "tool/deploy_phone.ps1"],
+      "presentation": { "reveal": "always", "panel": "shared", "clear": true },
+      "problemMatcher": []
+    },
+    {
       "label": "flutter clean (빌드 캐시 정리)",
       "type": "shell",
       "command": "flutter",

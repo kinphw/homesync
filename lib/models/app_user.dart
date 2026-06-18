@@ -17,6 +17,9 @@ class AppUser {
   /// 소속된 그룹 id. 아직 그룹이 없으면 null.
   final String? groupId;
 
+  /// 운영자가 로그인을 차단한 회원인지. true면 일반 앱이 로그인 시 내보낸다.
+  final bool banned;
+
   final DateTime? createdAt;
 
   const AppUser({
@@ -26,6 +29,7 @@ class AppUser {
     required this.isEmailAccount,
     required this.colorValue,
     this.groupId,
+    this.banned = false,
     this.createdAt,
   });
 
@@ -76,6 +80,7 @@ class AppUser {
       isEmailAccount: isEmailAccount,
       colorValue: (data['colorValue'] ?? 0xFF1565C0) as int,
       groupId: data['groupId'] as String?,
+      banned: data['banned'] == true,
       createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
     );
   }

@@ -54,8 +54,10 @@ service cloud.firestore {
         resource.data.groupId == myGroupId()
       );
       allow create: if isSignedIn() && request.auth.uid == userId;
-      allow update: if isSignedIn() && request.auth.uid == userId;
-      allow delete: if false;
+      // 본인 프로필 수정, 또는 운영자(로그인 차단 banned 설정 등)
+      allow update: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      // 삭제: 운영자만(회원 가입내역 삭제)
+      allow delete: if isAdmin();
     }
 
     // ---------- 그룹 ----------
@@ -69,10 +71,19 @@ service cloud.firestore {
         && request.resource.data.ownerUid == request.auth.uid
         && request.auth.uid in request.resource.data.memberUids;
 
-      // 수정: 기존 구성원(나가기·구성원 관리) 또는 새로 합류하는 본인일 때 허용
-      allow update: if isSignedIn() && (
-        request.auth.uid in resource.data.memberUids ||
-        request.auth.uid in request.resource.data.memberUids
+      // 수정: 운영자(회원 삭제 시 구성원 목록 정리), 또는
+      // 기존 구성원(나가기·구성원 관리·강퇴) 또는 새로 합류하는 본인일 때 허용.
+      // 단, 방장(ownerUid) 변경(위임)은 현재 방장만 가능.
+      allow update: if isAdmin() || (
+        isSignedIn()
+        && (
+          request.auth.uid in resource.data.memberUids ||
+          request.auth.uid in request.resource.data.memberUids
+        )
+        && (
+          request.resource.data.ownerUid == resource.data.ownerUid ||
+          request.auth.uid == resource.data.ownerUid
+        )
       );
 
       // 삭제: 방장만 (그룹 파괴)
@@ -81,8 +92,10 @@ service cloud.firestore {
 
       // ---------- 일정 ----------
       match /events/{eventId} {
-        // 같은 그룹 구성원, 또는 운영자(관제·일정 수 집계)만 조회
-        allow read: if isMemberOf(groupId) || isAdmin();
+        // 같은 그룹 구성원, 또는 운영자(관제·일정 수 집계)만 조회.
+        // 운영자 판정을 앞에 둬서, 관제용 collectionGroup 집계 때
+        // isMemberOf 의 그룹 문서 조회를 건너뛰도록 한다(short-circuit).
+        allow read: if isAdmin() || isMemberOf(groupId);
 
         // 생성: 구성원이고, 작성자(ownerUid)가 본인일 때
         allow create: if isMemberOf(groupId)

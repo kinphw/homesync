@@ -34,6 +34,31 @@ class FirestoreService {
     await _users.doc(uid).update({'groupId': groupId});
   }
 
+  /// 프로필(이름·색상) 변경. 그룹이 있으면 본인 일정의 비정규화 필드도 동기화.
+  Future<void> updateProfile({
+    required String uid,
+    required String name,
+    required int colorValue,
+    String? groupId,
+  }) async {
+    await _users.doc(uid).update({
+      'name': name.trim(),
+      'colorValue': colorValue,
+    });
+    if (groupId != null) {
+      final mine =
+          await _events(groupId).where('ownerUid', isEqualTo: uid).get();
+      for (var i = 0; i < mine.docs.length; i += 400) {
+        final batch = _db.batch();
+        for (final d in mine.docs.skip(i).take(400)) {
+          batch.update(d.reference,
+              {'ownerName': name.trim(), 'colorValue': colorValue});
+        }
+        await batch.commit();
+      }
+    }
+  }
+
   /// 그룹 구성원들의 프로필을 실시간으로 가져온다.
   Stream<List<AppUser>> watchMembers(List<String> uids) {
     if (uids.isEmpty) return Stream.value(const []);
@@ -88,6 +113,57 @@ class FirestoreService {
       'memberUids': FieldValue.arrayUnion([uid]),
     });
     await setUserGroup(uid, groupId);
+  }
+
+  /// 그룹 나가기: 구성원 목록에서 본인을 빼고 groupId 해제.
+  Future<void> leaveGroup({
+    required String groupId,
+    required String uid,
+  }) async {
+    await _groups.doc(groupId).update({
+      'memberUids': FieldValue.arrayRemove([uid]),
+    });
+    await setUserGroup(uid, null);
+  }
+
+  /// 구성원 강퇴(방장): 구성원 목록에서 제거. 강퇴된 사용자는 자기 앱에서
+  /// 더 이상 멤버가 아님을 감지하고 그룹 설정 화면으로 이동된다.
+  Future<void> kickMember({
+    required String groupId,
+    required String uid,
+  }) async {
+    await _groups.doc(groupId).update({
+      'memberUids': FieldValue.arrayRemove([uid]),
+    });
+  }
+
+  /// 방장 위임: 그룹의 ownerUid를 다른 구성원으로 변경.
+  Future<void> transferOwnership({
+    required String groupId,
+    required String newOwnerUid,
+  }) async {
+    await _groups.doc(groupId).update({'ownerUid': newOwnerUid});
+  }
+
+  /// 그룹 삭제(방장 전용): 모든 일정과 그룹 문서를 삭제하고 방장 groupId 해제.
+  /// 다른 구성원은 그룹이 사라지면 각자 앱이 그룹 설정 화면으로 보낸다.
+  Future<void> deleteGroup({
+    required String groupId,
+    required String ownerUid,
+  }) async {
+    // 1) 일정 전부 삭제 (배치, 500개 제한이라 안전하게 400씩)
+    final events = await _events(groupId).get();
+    for (var i = 0; i < events.docs.length; i += 400) {
+      final batch = _db.batch();
+      for (final d in events.docs.skip(i).take(400)) {
+        batch.delete(d.reference);
+      }
+      await batch.commit();
+    }
+    // 2) 그룹 문서 삭제
+    await _groups.doc(groupId).delete();
+    // 3) 방장 본인 groupId 해제
+    await setUserGroup(ownerUid, null);
   }
 
   String _generateInviteCode() {

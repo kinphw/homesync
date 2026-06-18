@@ -152,6 +152,26 @@ class _JoinGroupTabState extends ConsumerState<_JoinGroupTab> {
         }
         return;
       }
+      // 잘못된 그룹 가입 방지: 참여 전 그룹 이름을 보여주고 확인받는다.
+      if (!mounted) return;
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('이 그룹이 맞나요?'),
+          content: Text(
+            '"${group.name}" 그룹에 참여합니다.\n현재 구성원 ${group.memberUids.length}명.',
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('취소')),
+            FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('참여')),
+          ],
+        ),
+      );
+      if (confirm != true) return;
       await service.joinGroup(groupId: group.id, uid: uid);
       // 참여 후 AuthGate가 캘린더로 전환.
     } catch (e) {

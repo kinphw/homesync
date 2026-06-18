@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'models/app_user.dart';
 import 'models/calendar_event.dart';
@@ -107,3 +108,31 @@ final groupEventsProvider = StreamProvider<List<CalendarEvent>>((ref) {
   if (group == null) return Stream.value(const []);
   return ref.watch(firestoreServiceProvider).watchAllEvents(group.id);
 });
+
+// ---------------- 알림 설정 ----------------
+
+/// 알림 on/off (기기 로컬, shared_preferences 저장). 기본 켜짐.
+class NotificationsEnabled extends Notifier<bool> {
+  static const _key = 'notifications_enabled';
+
+  @override
+  bool build() {
+    _load();
+    return true;
+  }
+
+  Future<void> _load() async {
+    final prefs = await SharedPreferences.getInstance();
+    final v = prefs.getBool(_key);
+    if (v != null && v != state) state = v;
+  }
+
+  Future<void> setEnabled(bool value) async {
+    state = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_key, value);
+  }
+}
+
+final notificationsEnabledProvider =
+    NotifierProvider<NotificationsEnabled, bool>(NotificationsEnabled.new);

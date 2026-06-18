@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:table_calendar/table_calendar.dart';
 
+import '../../data/holidays.dart';
 import '../../models/calendar_event.dart';
 import '../../providers.dart';
 import '../../widgets/member_filter_bar.dart';
@@ -23,8 +24,15 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   /// false = 점 보기(아래 목록), true = 달력 칸에 내용 직접 표시. 기본은 내용 보기.
   bool _showContent = true;
 
-  /// 표시 범위. 기본은 2주(오늘 포함 이번주+다음주) — 칸이 커서 한눈에 많이 보인다.
-  CalendarFormat _format = CalendarFormat.twoWeeks;
+  /// 표시 범위. 기본은 월(가독성). 2주 모드는 토글로 전환.
+  CalendarFormat _format = CalendarFormat.month;
+
+  /// 2주 모드의 시작일 = 이번 주 일요일. (오늘 주가 항상 1주차가 되도록 + 과거 차단)
+  DateTime get _twoWeekFirstDay {
+    final now = DateTime.now();
+    final base = DateTime(now.year, now.month, now.day);
+    return base.subtract(Duration(days: base.weekday % 7)); // 일요일 시작
+  }
 
   /// 하루치 일정 = 그 날의 단발 일정 + 매주 반복 일정(요일/앵커 조건 충족분).
   List<CalendarEvent> _eventsForDay(
@@ -97,7 +105,10 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
               children: [
                 _segToggle(
                   '2주', isTwoWeeks,
-                  () => setState(() => _format = CalendarFormat.twoWeeks),
+                  () => setState(() {
+                    _format = CalendarFormat.twoWeeks;
+                    _focusedDay = DateTime.now(); // 오늘 주가 1주차가 되도록
+                  }),
                   '1달', !isTwoWeeks,
                   () => setState(() => _format = CalendarFormat.month),
                 ),
@@ -120,11 +131,13 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
             margin: const EdgeInsets.symmetric(horizontal: 12),
             child: TableCalendar<CalendarEvent>(
               locale: 'ko_KR',
-              firstDay: DateTime.utc(2020, 1, 1),
+              firstDay:
+                  isTwoWeeks ? _twoWeekFirstDay : DateTime.utc(2020, 1, 1),
               lastDay: DateTime.utc(2035, 12, 31),
               focusedDay: _focusedDay,
               rowHeight: rowHeight,
               selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
+              holidayPredicate: (day) => Holidays.isHoliday(day),
               eventLoader: eventsForDay,
               startingDayOfWeek: StartingDayOfWeek.sunday,
               calendarFormat: _format,
@@ -147,6 +160,8 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                   color: Color(0xFF1565C0),
                   shape: BoxShape.circle,
                 ),
+                holidayTextStyle: TextStyle(color: Color(0xFFD32F2F)),
+                holidayDecoration: BoxDecoration(),
                 markersMaxCount: 4,
               ),
               onDaySelected: (selected, focused) {
@@ -281,9 +296,10 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     bool isSelected = false,
     bool isOutside = false,
   }) {
+    final bool isHoliday = Holidays.isHoliday(day);
     final Color dayColor = isOutside
         ? Colors.black26
-        : day.weekday == DateTime.sunday
+        : (isHoliday || day.weekday == DateTime.sunday)
             ? Colors.red.shade400
             : day.weekday == DateTime.saturday
                 ? Colors.blue.shade400
@@ -378,6 +394,14 @@ class _DayEventList extends StatelessWidget {
             '${date.month}월 ${date.day}일 (${_weekday(date)})',
             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
           ),
+          if (Holidays.nameFor(date) != null) ...[
+            const SizedBox(width: 8),
+            Text(Holidays.nameFor(date)!,
+                style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFFD32F2F))),
+          ],
           const SizedBox(width: 8),
           if (events.isNotEmpty)
             Text('${events.length}건',

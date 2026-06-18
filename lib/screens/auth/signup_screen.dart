@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../providers.dart';
 import '../../services/auth_service.dart';
@@ -59,6 +60,10 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
             password: _password.text,
             colorValue: _colorValue,
           );
+      // 다음 로그인 때 아이디 미리 채우기
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('remember_id', true);
+      await prefs.setString('last_login_id', _account.text.trim());
       if (mounted) Navigator.of(context).pop(); // AuthGate가 이후 화면 처리
     } on FirebaseAuthException catch (e) {
       _showError(_messageFor(e));

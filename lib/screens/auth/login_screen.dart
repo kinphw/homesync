@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../providers.dart';
 import '../../services/auth_service.dart';
@@ -18,6 +19,34 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _account = TextEditingController();
   final _password = TextEditingController();
   bool _loading = false;
+  bool _rememberId = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedId();
+  }
+
+  Future<void> _loadSavedId() async {
+    final prefs = await SharedPreferences.getInstance();
+    final remember = prefs.getBool('remember_id') ?? true;
+    final saved = prefs.getString('last_login_id') ?? '';
+    if (!mounted) return;
+    setState(() {
+      _rememberId = remember;
+      if (remember && saved.isNotEmpty) _account.text = saved;
+    });
+  }
+
+  Future<void> _saveId() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('remember_id', _rememberId);
+    if (_rememberId) {
+      await prefs.setString('last_login_id', _account.text.trim());
+    } else {
+      await prefs.remove('last_login_id');
+    }
+  }
 
   @override
   void dispose() {
@@ -30,6 +59,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _loading = true);
     try {
+      await _saveId();
       await ref.read(authServiceProvider).signIn(
             account: _account.text,
             password: _password.text,
@@ -171,12 +201,31 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     validator: (v) =>
                         (v == null || v.isEmpty) ? '비밀번호를 입력하세요' : null,
                   ),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton(
-                      onPressed: _loading ? null : _showResetDialog,
-                      child: const Text('비밀번호를 잊으셨나요?'),
-                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      InkWell(
+                        onTap: () =>
+                            setState(() => _rememberId = !_rememberId),
+                        borderRadius: BorderRadius.circular(6),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Checkbox(
+                              value: _rememberId,
+                              visualDensity: VisualDensity.compact,
+                              onChanged: (v) =>
+                                  setState(() => _rememberId = v ?? true),
+                            ),
+                            const Text('아이디 저장'),
+                          ],
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: _loading ? null : _showResetDialog,
+                        child: const Text('비밀번호를 잊으셨나요?'),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 8),
                   FilledButton(
