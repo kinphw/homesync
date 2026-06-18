@@ -289,7 +289,9 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                 ? Colors.blue.shade400
                 : Colors.black87;
 
-    return Positioned.fill(
+    // 셀을 가득 채우되, table_calendar가 빌더 결과를 Semantics로 감싸므로
+    // Positioned(Stack 직속 필요)가 아닌 SizedBox.expand 를 사용한다.
+    return SizedBox.expand(
       child: Container(
         margin: const EdgeInsets.all(1.5),
         padding: const EdgeInsets.fromLTRB(2, 2, 2, 2),
