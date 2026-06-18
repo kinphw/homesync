@@ -1,0 +1,78 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "AAB 빌드 (release) — Play 업로드용",
+      "detail": "flutter build appbundle --release → build/app/outputs/bundle/release/app-release.aab",
+      "type": "shell",
+      "command": "flutter",
+      "args": ["build", "appbundle", "--release"],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "APK 빌드 (release) — 사이드로드/직접설치용",
+      "detail": "flutter build apk --release → build/app/outputs/flutter-apk/app-release.apk",
+      "type": "shell",
+      "command": "flutter",
+      "args": ["build", "apk", "--release"],
+      "group": "build",
+      "presentation": { "reveal": "always", "panel": "shared", "clear": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "flutter clean (빌드 캐시 정리)",
+      "type": "shell",
+      "command": "flutter",
+      "args": ["clean"],
+      "presentation": { "reveal": "always", "panel": "shared" },
+      "problemMatcher": []
+    },
+    {
+      "label": "관리자: 규칙 배포 (firestore:rules)",
+      "detail": "firebase deploy --only firestore:rules — 보안 규칙을 서버에 반영",
+      "type": "shell",
+      "command": "firebase",
+      "args": ["deploy", "--only", "firestore:rules"],
+      "presentation": { "reveal": "always", "panel": "shared", "clear": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "관리자: 웹 실행 (Chrome)",
+      "detail": "flutter run -d chrome -t lib/main_admin.dart — 관리자 웹 로컬 미리보기",
+      "type": "shell",
+      "command": "flutter",
+      "args": ["run", "-d", "chrome", "-t", "lib/main_admin.dart"],
+      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "관리자: 웹 빌드",
+      "detail": "flutter build web -t lib/main_admin.dart → build/web",
+      "type": "shell",
+      "command": "flutter",
+      "args": ["build", "web", "-t", "lib/main_admin.dart"],
+      "presentation": { "reveal": "always", "panel": "shared", "clear": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "관리자: 웹 배포 (빌드 + 호스팅)",
+      "detail": "관리자 웹을 빌드한 뒤 firebase hosting 에 배포",
+      "type": "shell",
+      "command": "firebase",
+      "args": ["deploy", "--only", "hosting"],
+      "dependsOn": ["관리자: 웹 빌드"],
+      "dependsOrder": "sequence",
+      "presentation": { "reveal": "always", "panel": "shared", "clear": true },
+      "problemMatcher": []
+    }
+  ]
+}
