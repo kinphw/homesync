@@ -55,6 +55,15 @@
       "problemMatcher": []
     },
     {
+      "label": "관리자: 함수 배포 (functions) — 새 일정 푸시",
+      "detail": "firebase deploy --only functions (Blaze 요금제 필요, 가족 규모는 무료 한도 내)",
+      "type": "shell",
+      "command": "firebase",
+      "args": ["deploy", "--only", "functions"],
+      "presentation": { "reveal": "always", "panel": "shared", "clear": true },
+      "problemMatcher": []
+    },
+    {
       "label": "관리자: 웹 실행 (Chrome)",
       "detail": "flutter run -d chrome -t lib/main_admin.dart — 관리자 웹 로컬 미리보기",
       "type": "shell",

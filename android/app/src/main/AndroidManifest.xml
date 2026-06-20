@@ -37,6 +37,10 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- FCM 알림 기본 채널(앱에서 만든 event_reminders 사용) -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="event_reminders" />
         <!-- 재부팅 후 예약 알림 복원 (flutter_local_notifications) -->
         <receiver
             android:exported="false"

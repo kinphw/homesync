@@ -51,6 +51,16 @@ class NotificationService {
     await _plugin.initialize(
       settings: const InitializationSettings(android: android, iOS: ios),
     );
+    // FCM 백그라운드 알림도 이 채널을 쓰도록 미리 생성.
+    await _plugin
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(const AndroidNotificationChannel(
+          _channelId,
+          _channelName,
+          description: '등록한 일정 알림',
+          importance: Importance.high,
+        ));
     _ready = true;
   }
 
@@ -147,6 +157,17 @@ class NotificationService {
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       );
     }
+  }
+
+  /// 즉시 알림 1건 표시(포그라운드 FCM 수신 시 등).
+  Future<void> show(String title, String body) async {
+    await init();
+    await _plugin.show(
+      id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
+      title: title,
+      body: body,
+      notificationDetails: _details,
+    );
   }
 }
 

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'models/calendar_event.dart';
 import 'providers.dart';
+import 'services/fcm_service.dart';
 import 'services/notification_service.dart';
 import 'theme/app_theme.dart';
 import 'screens/auth_gate.dart';
@@ -43,6 +44,8 @@ class _NotificationSync extends ConsumerStatefulWidget {
 }
 
 class _NotificationSyncState extends ConsumerState<_NotificationSync> {
+  String? _lastUid;
+
   @override
   void initState() {
     super.initState();
@@ -56,6 +59,17 @@ class _NotificationSyncState extends ConsumerState<_NotificationSync> {
 
   @override
   Widget build(BuildContext context) {
+    // 로그인/로그아웃에 따라 FCM 토큰 등록/해제
+    ref.listen(currentUserProvider, (_, next) {
+      final uid = next.value?.uid;
+      if (uid == _lastUid) return;
+      if (uid != null) {
+        FcmService.instance.register(uid);
+      } else if (_lastUid != null) {
+        FcmService.instance.unregister(_lastUid!);
+      }
+      _lastUid = uid;
+    });
     // 일정 목록이 바뀌면 재예약
     ref.listen(groupEventsProvider, (_, next) {
       NotificationService.instance.rescheduleAll(
