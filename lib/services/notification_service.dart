@@ -115,6 +115,15 @@ class NotificationService {
             d = d.add(const Duration(days: 1))) {
           if (d.weekday == e.date.weekday && !d.isBefore(anchor)) addOcc(d, e);
         }
+      } else if (e.isRange) {
+        // 기간 일정: 시작~종료 각 날짜의 아침 요약에 포함(addOcc가 30일 내로 제한).
+        final start = CalendarEvent.dayOnly(e.date);
+        final end = CalendarEvent.dayOnly(e.endDate!);
+        for (var d = start;
+            !d.isAfter(end);
+            d = d.add(const Duration(days: 1))) {
+          addOcc(d, e);
+        }
       } else {
         addOcc(e.date, e);
       }

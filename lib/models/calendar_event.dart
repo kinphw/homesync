@@ -28,8 +28,11 @@ class CalendarEvent {
   final String id;
   final String title;
 
-  /// 일정 날짜(자정 기준).
+  /// 일정 날짜(자정 기준). 기간 일정이면 시작일.
   final DateTime date;
+
+  /// 기간 일정의 종료일(자정 기준). null이거나 [date]와 같으면 하루 일정.
+  final DateTime? endDate;
 
   /// 시간대(종일/오전/오후/저녁). 정확한 시각은 제목에 자유롭게 적는다.
   final EventPeriod period;
@@ -53,6 +56,7 @@ class CalendarEvent {
     required this.id,
     required this.title,
     required this.date,
+    this.endDate,
     required this.period,
     this.repeatWeekly = false,
     required this.ownerUid,
@@ -69,15 +73,23 @@ class CalendarEvent {
   /// "종일" / "오전" / "오후" / "저녁".
   String get periodLabel => period.label;
 
+  /// 여러 날에 걸친 기간 일정인지.
+  bool get isRange =>
+      endDate != null && dayOnly(endDate!).isAfter(dayOnly(date));
+
   /// 앵커 날짜의 한글 요일 (월~일).
   String get weekdayKorean {
     const names = ['월', '화', '수', '목', '금', '토', '일'];
     return names[date.weekday - 1];
   }
 
+  /// copyWith에서 endDate를 '바꾸지 않음'과 'null로 지움'을 구분하기 위한 표식.
+  static const Object _unset = Object();
+
   CalendarEvent copyWith({
     String? title,
     DateTime? date,
+    Object? endDate = _unset,
     EventPeriod? period,
     bool? repeatWeekly,
     int? colorValue,
@@ -87,6 +99,8 @@ class CalendarEvent {
       id: id,
       title: title ?? this.title,
       date: date ?? this.date,
+      endDate:
+          identical(endDate, _unset) ? this.endDate : endDate as DateTime?,
       period: period ?? this.period,
       repeatWeekly: repeatWeekly ?? this.repeatWeekly,
       ownerUid: ownerUid,
@@ -102,6 +116,8 @@ class CalendarEvent {
     return {
       'title': title,
       'date': Timestamp.fromDate(dayOnly(date)),
+      'endDate':
+          endDate != null ? Timestamp.fromDate(dayOnly(endDate!)) : null,
       'period': period.name,
       'repeatWeekly': repeatWeekly,
       'ownerUid': ownerUid,
@@ -121,6 +137,7 @@ class CalendarEvent {
       id: doc.id,
       title: (data['title'] ?? '') as String,
       date: (data['date'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      endDate: (data['endDate'] as Timestamp?)?.toDate(),
       period: EventPeriod.fromName(data['period'] as String?),
       repeatWeekly: (data['repeatWeekly'] ?? false) as bool,
       ownerUid: (data['ownerUid'] ?? '') as String,

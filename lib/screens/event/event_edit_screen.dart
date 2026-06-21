@@ -20,6 +20,8 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
   late final TextEditingController _title;
   late final TextEditingController _memo;
   late DateTime _date;
+  late DateTime _endDate;
+  late bool _isRange;
   late EventPeriod _period;
   late bool _repeatWeekly;
   bool _loading = false;
@@ -35,8 +37,18 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
     _title = TextEditingController(text: e?.title ?? '');
     _memo = TextEditingController(text: e?.memo ?? '');
     _date = e?.date ?? widget.initialDate ?? DateTime.now();
+    _isRange = e?.isRange ?? false;
+    _endDate = e?.endDate ?? _date;
     _period = e?.period ?? EventPeriod.allDay;
     _repeatWeekly = e?.repeatWeekly ?? false;
+  }
+
+  String _fmt(DateTime d) => '${d.year}.${d.month}.${d.day}';
+
+  int get _rangeDays {
+    final s = DateTime(_date.year, _date.month, _date.day);
+    final e = DateTime(_endDate.year, _endDate.month, _endDate.day);
+    return e.difference(s).inDays + 1;
   }
 
   @override
@@ -54,7 +66,24 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
       lastDate: DateTime(2035, 12, 31),
       locale: const Locale('ko', 'KR'),
     );
-    if (picked != null) setState(() => _date = picked);
+    if (picked != null) {
+      setState(() {
+        _date = picked;
+        // 시작일이 종료일보다 뒤면 종료일을 시작일로 맞춘다.
+        if (_endDate.isBefore(_date)) _endDate = _date;
+      });
+    }
+  }
+
+  Future<void> _pickEndDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _endDate.isBefore(_date) ? _date : _endDate,
+      firstDate: _date, // 종료일은 시작일 이후만
+      lastDate: DateTime(2035, 12, 31),
+      locale: const Locale('ko', 'KR'),
+    );
+    if (picked != null) setState(() => _endDate = picked);
   }
 
   Future<void> _save() async {
@@ -63,6 +92,11 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
     final group = ref.read(currentGroupProvider).value;
     if (user == null || group == null) return;
 
+    // 기간 일정은 '종일'로 다루고 매주 반복은 끈다.
+    final period = _isRange ? EventPeriod.allDay : _period;
+    final repeat = _isRange ? false : _repeatWeekly;
+    final endDate = _isRange ? _endDate : null;
+
     setState(() => _loading = true);
     try {
       final service = ref.read(firestoreServiceProvider);
@@ -70,8 +104,9 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
         final updated = widget.existing!.copyWith(
           title: _title.text.trim(),
           date: _date,
-          period: _period,
-          repeatWeekly: _repeatWeekly,
+          endDate: endDate,
+          period: period,
+          repeatWeekly: repeat,
           memo: _memo.text.trim(),
         );
         await service.updateEvent(group.id, updated);
@@ -80,8 +115,9 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
           id: '',
           title: _title.text.trim(),
           date: _date,
-          period: _period,
-          repeatWeekly: _repeatWeekly,
+          endDate: endDate,
+          period: period,
+          repeatWeekly: repeat,
           ownerUid: user.uid,
           ownerName: user.name,
           colorValue: user.colorValue,
@@ -122,56 +158,103 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
                       (v == null || v.trim().isEmpty) ? '제목을 입력하세요' : null,
                 ),
                 const SizedBox(height: 20),
-                Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.event),
-                    title: const Text('날짜'),
-                    trailing: Text(
-                      '${_date.year}.${_date.month}.${_date.day}',
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w600, fontSize: 15),
-                    ),
-                    onTap: _pickDate,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                const Padding(
-                  padding: EdgeInsets.only(left: 4, bottom: 8),
-                  child: Text('시간대',
-                      style: TextStyle(fontWeight: FontWeight.w600)),
-                ),
-                SegmentedButton<EventPeriod>(
-                  segments: const [
-                    ButtonSegment(
-                        value: EventPeriod.allDay, label: Text('종일')),
-                    ButtonSegment(
-                        value: EventPeriod.morning, label: Text('오전')),
-                    ButtonSegment(
-                        value: EventPeriod.afternoon, label: Text('오후')),
-                    ButtonSegment(
-                        value: EventPeriod.evening, label: Text('저녁')),
-                  ],
-                  selected: {_period},
-                  onSelectionChanged: (s) => setState(() => _period = s.first),
-                ),
-                const SizedBox(height: 8),
-                const Padding(
-                  padding: EdgeInsets.only(left: 4),
-                  child: Text(
-                    '정확한 시각이 필요하면 제목에 적어주세요 (예: "치과 3시")',
-                    style: TextStyle(color: Colors.black45, fontSize: 12),
-                  ),
-                ),
-                const SizedBox(height: 16),
+                // 기간 일정 토글
                 Card(
                   child: SwitchListTile(
-                    secondary: const Icon(Icons.repeat),
-                    title: const Text('매주 반복'),
-                    subtitle: Text('매주 ${_weekdays[_date.weekday - 1]}요일에 표시돼요'),
-                    value: _repeatWeekly,
-                    onChanged: (v) => setState(() => _repeatWeekly = v),
+                    secondary: const Icon(Icons.date_range),
+                    title: const Text('기간 일정 (여러 날)'),
+                    subtitle: Text(
+                        _isRange ? '시작일~종료일 동안 매일 표시돼요' : '하루 일정'),
+                    value: _isRange,
+                    onChanged: (v) => setState(() {
+                      _isRange = v;
+                      if (v && _endDate.isBefore(_date)) _endDate = _date;
+                    }),
                   ),
                 ),
+                const SizedBox(height: 8),
+                if (_isRange) ...[
+                  Card(
+                    child: Column(
+                      children: [
+                        ListTile(
+                          leading: const Icon(Icons.event),
+                          title: const Text('시작일'),
+                          trailing: Text(_fmt(_date),
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w600, fontSize: 15)),
+                          onTap: _pickDate,
+                        ),
+                        const Divider(height: 1),
+                        ListTile(
+                          leading: const Icon(Icons.event_available),
+                          title: const Text('종료일'),
+                          trailing: Text(_fmt(_endDate),
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w600, fontSize: 15)),
+                          onTap: _pickEndDate,
+                        ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 8, top: 6),
+                    child: Text('총 $_rangeDays일 · 기간 일정은 "종일"로 표시돼요',
+                        style: const TextStyle(
+                            color: Colors.black45, fontSize: 12)),
+                  ),
+                ] else ...[
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.event),
+                      title: const Text('날짜'),
+                      trailing: Text(_fmt(_date),
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w600, fontSize: 15)),
+                      onTap: _pickDate,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Padding(
+                    padding: EdgeInsets.only(left: 4, bottom: 8),
+                    child: Text('시간대',
+                        style: TextStyle(fontWeight: FontWeight.w600)),
+                  ),
+                  SegmentedButton<EventPeriod>(
+                    segments: const [
+                      ButtonSegment(
+                          value: EventPeriod.allDay, label: Text('종일')),
+                      ButtonSegment(
+                          value: EventPeriod.morning, label: Text('오전')),
+                      ButtonSegment(
+                          value: EventPeriod.afternoon, label: Text('오후')),
+                      ButtonSegment(
+                          value: EventPeriod.evening, label: Text('저녁')),
+                    ],
+                    selected: {_period},
+                    onSelectionChanged: (s) =>
+                        setState(() => _period = s.first),
+                  ),
+                  const SizedBox(height: 8),
+                  const Padding(
+                    padding: EdgeInsets.only(left: 4),
+                    child: Text(
+                      '정확한 시각이 필요하면 제목에 적어주세요 (예: "치과 3시")',
+                      style: TextStyle(color: Colors.black45, fontSize: 12),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Card(
+                    child: SwitchListTile(
+                      secondary: const Icon(Icons.repeat),
+                      title: const Text('매주 반복'),
+                      subtitle: Text(
+                          '매주 ${_weekdays[_date.weekday - 1]}요일에 표시돼요'),
+                      value: _repeatWeekly,
+                      onChanged: (v) => setState(() => _repeatWeekly = v),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 20),
                 TextFormField(
                   controller: _memo,

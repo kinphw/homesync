@@ -21,11 +21,20 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   DateTime _focusedDay = DateTime.now();
   DateTime _selectedDay = DateTime.now();
 
-  /// false = 점 보기(아래 목록), true = 달력 칸에 내용 직접 표시. 기본은 내용 보기.
-  bool _showContent = true;
-
   /// 표시 범위. 기본은 월(가독성). 2주 모드는 토글로 전환.
   CalendarFormat _format = CalendarFormat.month;
+
+  /// 일정 목록 시트 제어용. 달 높이(주 수)나 2주·월 전환으로 캘린더 높이가 바뀌면
+  /// 시트를 캘린더 바로 아래 위치로 부드럽게 이동시킨다.
+  final DraggableScrollableController _sheetController =
+      DraggableScrollableController();
+  double? _lastRestFrac;
+
+  @override
+  void dispose() {
+    _sheetController.dispose();
+    super.dispose();
+  }
 
   /// 2주 모드의 firstDay. table_calendar는 2주 페이지를 firstDay+14*n 으로 나누므로,
   /// '이번 주 일요일'에서 짝수 주(10년)만큼 앞으로 당기면 오늘 주가 항상 1주차(맨 윗줄)에
@@ -37,11 +46,20 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     return sunday.subtract(const Duration(days: 7 * 520)); // 10년 전(짝수 주)
   }
 
+  /// 해당 월이 달력에서 차지하는 주(행) 수. (일요일 시작 기준, 4~6)
+  int _rowsInMonth(DateTime month) {
+    final first = DateTime(month.year, month.month, 1);
+    final leading = first.weekday % 7; // 일요일=0 … 토요일=6
+    final days = DateTime(month.year, month.month + 1, 0).day; // 그 달 일수
+    return ((leading + days) / 7).ceil();
+  }
+
   /// 하루치 일정 = 그 날의 단발 일정 + 매주 반복 일정(요일/앵커 조건 충족분).
   List<CalendarEvent> _eventsForDay(
     DateTime day,
     Map<DateTime, List<CalendarEvent>> oneTimeByDay,
     List<CalendarEvent> repeating,
+    List<CalendarEvent> ranged,
   ) {
     final d = CalendarEvent.dayOnly(day);
     final list = <CalendarEvent>[...(oneTimeByDay[d] ?? const [])];
@@ -50,6 +68,12 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
           !d.isBefore(CalendarEvent.dayOnly(e.date))) {
         list.add(e);
       }
+    }
+    // 기간 일정: 시작일~종료일 사이의 모든 날에 표시.
+    for (final e in ranged) {
+      final start = CalendarEvent.dayOnly(e.date);
+      final end = CalendarEvent.dayOnly(e.endDate!);
+      if (!d.isBefore(start) && !d.isAfter(end)) list.add(e);
     }
     list.sort((a, b) => a.period.order.compareTo(b.period.order));
     return list;
@@ -65,10 +89,13 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     final allEvents = eventsAsync.value ?? const <CalendarEvent>[];
     final oneTimeByDay = <DateTime, List<CalendarEvent>>{};
     final repeating = <CalendarEvent>[];
+    final ranged = <CalendarEvent>[];
     for (final e in allEvents) {
       if (hidden.contains(e.ownerUid)) continue;
       if (e.repeatWeekly) {
         repeating.add(e);
+      } else if (e.isRange) {
+        ranged.add(e);
       } else {
         oneTimeByDay
             .putIfAbsent(CalendarEvent.dayOnly(e.date), () => [])
@@ -77,15 +104,13 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     }
 
     List<CalendarEvent> eventsForDay(DateTime day) =>
-        _eventsForDay(day, oneTimeByDay, repeating);
+        _eventsForDay(day, oneTimeByDay, repeating, ranged);
 
     final selectedDayEvents = eventsForDay(_selectedDay);
 
     // 2주 모드는 행이 2줄뿐이라 칸을 크게 → 한 칸에 더 많은 일정 표시.
     final isTwoWeeks = _format == CalendarFormat.twoWeeks;
-    final double rowHeight = _showContent
-        ? (isTwoWeeks ? 140 : 68)
-        : (isTwoWeeks ? 60 : 52);
+    final double rowHeight = isTwoWeeks ? 140 : 68;
     final int maxItems = isTwoWeeks ? 6 : 2;
 
     return Scaffold(
@@ -115,13 +140,6 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                   '1달', !isTwoWeeks,
                   () => setState(() => _format = CalendarFormat.month),
                 ),
-                const SizedBox(width: 10),
-                _segToggle(
-                  '내용', _showContent,
-                  () => setState(() => _showContent = true),
-                  '점', !_showContent,
-                  () => setState(() => _showContent = false),
-                ),
               ],
             ),
           ),
@@ -135,13 +153,29 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
               builder: (context, constraints) {
                 // 캘린더가 차지하는 대략 높이(헤더+요일행+행들+여백)를 계산해,
                 // 일정 목록 시트가 처음엔 캘린더 바로 아래에 놓이게 한다.
-                final rows = isTwoWeeks ? 2 : 6;
+                // 달마다 실제 주 수에 맞춰 높이를 잡아 빈 줄이 안 생기게 한다.
+                final rows = isTwoWeeks ? 2 : _rowsInMonth(_focusedDay);
                 // 헤더+요일행+행들+여백. 시트가 캘린더 마지막 줄(선택된 날의 파란 박스
                 // 하단)을 가리지 않도록 약간 넉넉히 잡는다.
                 final calHeight = 58 + 18 + rows * rowHeight + 18;
                 final avail = constraints.maxHeight;
+                // 6주짜리 달에선 캘린더가 길어 남는 공간이 작다. 최소치를 낮게 둬서
+                // 시트가 캘린더(6주차 포함) 아래에 놓이게 한다(필요하면 위로 드래그).
                 final restFrac =
-                    ((avail - calHeight) / avail).clamp(0.22, 0.78).toDouble();
+                    ((avail - calHeight) / avail).clamp(0.10, 0.85).toDouble();
+                // 캘린더 높이(주 수/2주·월)가 바뀌면 시트를 캘린더 바로 아래로 이동.
+                if (_lastRestFrac != restFrac) {
+                  _lastRestFrac = restFrac;
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (_sheetController.isAttached) {
+                      _sheetController.animateTo(
+                        restFrac,
+                        duration: const Duration(milliseconds: 220),
+                        curve: Curves.easeOut,
+                      );
+                    }
+                  });
+                }
                 return Stack(
                   children: [
                     Positioned(
@@ -158,7 +192,6 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                           lastDay: DateTime.utc(2035, 12, 31),
                           focusedDay: _focusedDay,
                           rowHeight: rowHeight,
-                          sixWeekMonthsEnforced: true, // 월 높이 일정하게
                           selectedDayPredicate: (day) =>
                               isSameDay(_selectedDay, day),
                           holidayPredicate: (day) => Holidays.isHoliday(day),
@@ -199,23 +232,24 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                             });
                           },
                           onPageChanged: (focused) {
-                            _focusedDay = focused;
+                            // setState로 다시 그려야 새 달의 주 수에 맞춰 시트가 이동한다.
+                            setState(() => _focusedDay = focused);
                             ref
                                 .read(focusedMonthProvider.notifier)
                                 .setMonth(focused);
                           },
-                          calendarBuilders: _showContent
-                              ? _contentBuilders(eventsForDay, maxItems)
-                              : _dotBuilders(),
+                          calendarBuilders:
+                              _contentBuilders(eventsForDay, maxItems),
                         ),
                       ),
                     ),
                     // 일정 목록: 위로 드래그하면 크게 펼쳐진다.
+                    // 주 수(달 높이)가 바뀌면 시트를 다시 만들어 캘린더 아래에 맞춘다.
                     DraggableScrollableSheet(
+                      controller: _sheetController,
                       initialChildSize: restFrac,
-                      minChildSize: restFrac,
+                      minChildSize: 0.12,
                       maxChildSize: 0.92,
-                      snap: true,
                       builder: (context, scrollController) => _DayEventList(
                         date: _selectedDay,
                         events: selectedDayEvents,
@@ -286,34 +320,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     );
   }
 
-  // ---------- 점 보기 ----------
-  CalendarBuilders<CalendarEvent> _dotBuilders() {
-    return CalendarBuilders<CalendarEvent>(
-      markerBuilder: (context, day, events) {
-        if (events.isEmpty) return const SizedBox.shrink();
-        return Padding(
-          padding: const EdgeInsets.only(top: 1),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (final e in events.take(4))
-                Container(
-                  width: 6,
-                  height: 6,
-                  margin: const EdgeInsets.symmetric(horizontal: 1),
-                  decoration: BoxDecoration(
-                    color: Color(e.colorValue),
-                    shape: BoxShape.circle,
-                  ),
-                ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  // ---------- 내용 보기 (셀 안에 제목 표시) ----------
+  // ---------- 달력 칸 내용 그리기 ----------
   CalendarBuilders<CalendarEvent> _contentBuilders(
       List<CalendarEvent> Function(DateTime) loader, int maxItems) {
     return CalendarBuilders<CalendarEvent>(
@@ -349,21 +356,30 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                 ? Colors.blue.shade400
                 : Colors.black87;
 
-    // 셀을 가득 채우되, table_calendar가 빌더 결과를 Semantics로 감싸므로
-    // Positioned(Stack 직속 필요)가 아닌 SizedBox.expand 를 사용한다.
+    // 기간 일정(띠)과 단일 일정(글자)을 분리. 띠는 시작일 기준 정렬로
+    // 날짜가 바뀌어도 같은 줄에 쌓이도록 안정화한다.
+    final bars = events.where((e) => e.isRange).toList()
+      ..sort((a, b) {
+        final c = a.date.compareTo(b.date);
+        return c != 0 ? c : a.id.compareTo(b.id);
+      });
+    final points = events.where((e) => !e.isRange).toList();
+    final shownBars = bars.take(maxItems).toList();
+    final pointBudget = maxItems - shownBars.length;
+    final shownPoints = pointBudget > 0
+        ? points.take(pointBudget).toList()
+        : const <CalendarEvent>[];
+    final hidden =
+        (bars.length - shownBars.length) + (points.length - shownPoints.length);
+
+    // 가로 여백을 0으로 둬서 기간 일정 띠가 인접 칸과 붙어 이어지게 한다.
     return SizedBox.expand(
       child: Container(
-        margin: const EdgeInsets.all(1.5),
-        padding: const EdgeInsets.fromLTRB(2, 2, 2, 2),
-        decoration: BoxDecoration(
-          color: isSelected ? const Color(0x141565C0) : null,
-          borderRadius: BorderRadius.circular(7),
-          border: Border.all(
-            color: isSelected ? const Color(0xFF1565C0) : Colors.transparent,
-            width: 1.2,
-          ),
-        ),
+        margin: const EdgeInsets.symmetric(vertical: 1.5),
+        color: isSelected ? const Color(0x141565C0) : null,
         child: ClipRect(
+          // 세로는 칸 안으로 자르되 가로로는 살짝 넘치도록 허용(띠 이음새 덮기용).
+          clipper: const _CellBleedClipper(),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -386,9 +402,12 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                 ),
               ),
               const SizedBox(height: 1),
-              for (final e in events.take(maxItems))
+              // 기간 일정: 칸 너비를 꽉 채운 띠(이어져 보임).
+              for (final e in shownBars) _rangeBar(e, day),
+              // 단일 일정: 제목 칩.
+              for (final e in shownPoints)
                 Container(
-                  margin: const EdgeInsets.only(top: 1.5),
+                  margin: const EdgeInsets.fromLTRB(3, 1.5, 3, 0),
                   padding:
                       const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
                   decoration: BoxDecoration(
@@ -407,17 +426,67 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                     ),
                   ),
                 ),
-              if (events.length > maxItems)
+              if (hidden > 0)
                 Padding(
-                  padding: const EdgeInsets.only(top: 1),
-                  child: Text('+${events.length - maxItems}',
-                      style:
-                          const TextStyle(fontSize: 8.5, color: Colors.black45)),
+                  padding: const EdgeInsets.fromLTRB(3, 1, 0, 0),
+                  child: Text('+$hidden',
+                      style: const TextStyle(
+                          fontSize: 8.5, color: Colors.black45)),
                 ),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  /// 기간 일정 한 줄(띠). 칸 너비를 꽉 채우고, 시작/끝·주 경계에서만 모서리를
+  /// 둥글려 인접 칸과 이어져 보이게 한다. 제목은 시작일 또는 매 주의 첫 칸에만.
+  Widget _rangeBar(CalendarEvent e, DateTime day) {
+    final isStart = isSameDay(day, e.date);
+    final isEnd = isSameDay(day, e.endDate);
+    final isWeekStart = day.weekday == DateTime.sunday;
+    final isWeekEnd = day.weekday == DateTime.saturday;
+    final left =
+        (isStart || isWeekStart) ? const Radius.circular(4) : Radius.zero;
+    final right = (isEnd || isWeekEnd) ? const Radius.circular(4) : Radius.zero;
+    final showLabel = isStart || isWeekStart;
+    final color = Color(e.colorValue);
+    final bar = Container(
+      height: 14,
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      alignment: Alignment.centerLeft,
+      decoration: BoxDecoration(
+        // 불투명(solid)으로 둬야 겹친 부분이 두 겹으로 진해지지 않는다.
+        color: color,
+        borderRadius: BorderRadius.horizontal(left: left, right: right),
+      ),
+      child: showLabel
+          ? Text(
+              e.title,
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.clip,
+              style: const TextStyle(
+                fontSize: 9.5,
+                height: 1.1,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+            )
+          : const SizedBox.shrink(),
+    );
+    // 끝 칸(또는 토요일)이 아니면 오른쪽으로 살짝 늘려 다음 칸과 겹쳐 이음새를 덮는다.
+    final bleed = !(isEnd || isWeekEnd);
+    return Padding(
+      padding: const EdgeInsets.only(top: 1.5),
+      child: bleed
+          ? Transform.scale(
+              scaleX: 1.05,
+              alignment: Alignment.centerLeft,
+              child: bar,
+            )
+          : bar,
     );
   }
 }
@@ -535,9 +604,16 @@ class _EventTile extends StatelessWidget {
               const SizedBox(width: 6),
               const Icon(Icons.repeat, size: 14, color: Colors.black38),
             ],
+            if (event.isRange) ...[
+              const SizedBox(width: 6),
+              const Icon(Icons.date_range, size: 14, color: Colors.black38),
+            ],
           ],
         ),
-        subtitle: Text('${event.periodLabel} · ${event.ownerName}'),
+        subtitle: Text(event.isRange
+            ? '${event.date.month}/${event.date.day}~'
+                '${event.endDate!.month}/${event.endDate!.day} · ${event.ownerName}'
+            : '${event.periodLabel} · ${event.ownerName}'),
         trailing: const Icon(Icons.chevron_right),
         onTap: () => Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => EventDetailScreen(event: event)),
@@ -545,4 +621,16 @@ class _EventTile extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 셀 내용을 세로로는 칸 안으로 자르되, 가로로는 약간(±3px) 넘치도록 허용한다.
+/// 기간 일정 띠가 인접 칸과 겹쳐 이음새(미세한 흰 선)가 보이지 않게 하는 용도.
+class _CellBleedClipper extends CustomClipper<Rect> {
+  const _CellBleedClipper();
+
+  @override
+  Rect getClip(Size size) => Rect.fromLTRB(-3, 0, size.width + 3, size.height);
+
+  @override
+  bool shouldReclip(covariant CustomClipper<Rect> oldClipper) => false;
 }

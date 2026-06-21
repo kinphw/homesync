@@ -82,22 +82,33 @@ class EventDetailScreen extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 24),
-          _InfoRow(
-            icon: Icons.event,
-            label: event.repeatWeekly ? '시작일' : '날짜',
-            value: '${event.date.year}년 ${event.date.month}월 ${event.date.day}일',
-          ),
-          if (event.repeatWeekly)
+          if (event.isRange) ...[
             _InfoRow(
-              icon: Icons.repeat,
-              label: '반복',
-              value: '매주 ${event.weekdayKorean}요일',
+              icon: Icons.date_range,
+              label: '기간',
+              value:
+                  '${event.date.year}년 ${event.date.month}월 ${event.date.day}일\n'
+                  '~ ${event.endDate!.year}년 ${event.endDate!.month}월 ${event.endDate!.day}일',
             ),
-          _InfoRow(
-            icon: Icons.access_time,
-            label: '시간대',
-            value: event.periodLabel,
-          ),
+          ] else ...[
+            _InfoRow(
+              icon: Icons.event,
+              label: event.repeatWeekly ? '시작일' : '날짜',
+              value:
+                  '${event.date.year}년 ${event.date.month}월 ${event.date.day}일',
+            ),
+            if (event.repeatWeekly)
+              _InfoRow(
+                icon: Icons.repeat,
+                label: '반복',
+                value: '매주 ${event.weekdayKorean}요일',
+              ),
+            _InfoRow(
+              icon: Icons.access_time,
+              label: '시간대',
+              value: event.periodLabel,
+            ),
+          ],
           _InfoRow(
             icon: Icons.person_outline,
             label: '등록자',

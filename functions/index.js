@@ -69,6 +69,13 @@ exports.onNewEvent = onDocumentCreated(
       if (data.date && typeof data.date.toDate === "function") {
         const d = data.date.toDate();
         dateStr = `${d.getMonth() + 1}/${d.getDate()}`;
+        // 기간 일정이면 종료일까지 표시
+        if (data.endDate && typeof data.endDate.toDate === "function") {
+          const e2 = data.endDate.toDate();
+          if (e2 > d) {
+            dateStr += `~${e2.getMonth() + 1}/${e2.getDate()}`;
+          }
+        }
       }
       const title = `${data.ownerName || "가족"}님이 일정을 등록했어요`;
       const body = `${dateStr} ${periodLabel} ${data.title || ""}`.trim();
